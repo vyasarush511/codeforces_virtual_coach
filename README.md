@@ -2,8 +2,6 @@
 
 Codeforces Virtual Coach is a staged recommender-system project for competitive programmers. A user enters a Codeforces handle, the app analyzes their submission history, detects weak topics, and recommends unsolved problems that match their current growth needs.
 
-> Live demo: add your Render URL here after deployment, for example `https://codeforces-virtual-coach.onrender.com`
-
 ## What It Does
 
 - Fetches live Codeforces profile, submission, rating, and problemset data.
@@ -146,7 +144,6 @@ Candidate models:
 - Recommender: scikit-learn
 - Cache: SQLite TTL cache
 - Data: Codeforces API
-- Deployment: Render
 
 ## API Data Sources
 
@@ -158,17 +155,6 @@ The app uses official Codeforces API methods:
 - `problemset.problems`
 
 Reference: [Codeforces API methods](https://codeforces.com/apiHelp/methods)
-
-## Deploy Publicly
-
-This is not meant to stay on localhost. See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Render deployment flow.
-
-Short version:
-
-1. Push this folder as a GitHub repository.
-2. Create a Render Web Service from the repo.
-3. Render reads `render.yaml`, installs requirements, and starts FastAPI.
-4. Put the resulting `onrender.com` URL in this README as the live demo link.
 
 ## Run Locally
 
@@ -189,10 +175,3 @@ uvicorn backend.main:app --reload
 ```
 
 Open `http://127.0.0.1:8000`.
-
-## Resume Bullets
-
-- Built a full-stack Codeforces virtual coach using FastAPI, SQLite caching, scikit-learn, and live Codeforces API ingestion to analyze user submissions and recommend unsolved practice problems.
-- Implemented a staged recommender system: rule-based weakness detection followed by content-based cosine/KNN recommendations over problem vectors and user weakness profiles.
-- Engineered tag-wise diagnostics, rating-band targeting, recommendation diversity reranking, and a public deployment workflow for a recruiter-ready demo.
-
