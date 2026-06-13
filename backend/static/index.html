@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codeforces Virtual Coach</title>
+    <link rel="icon" href="/static/favicon.svg" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">CF</div>
+          <div>
+            <h1>Codeforces Virtual Coach</h1>
+            <p>Personalized rating-growth practice planner</p>
+          </div>
+        </div>
+        <form id="handle-form" class="handle-form">
+          <label for="handle-input">Handle</label>
+          <div class="input-row">
+            <input id="handle-input" name="handle" autocomplete="off" placeholder="tourist" />
+            <button class="primary-button" type="submit">
+              <i data-lucide="search"></i>
+              <span>Analyze</span>
+            </button>
+          </div>
+        </form>
+      </header>
+
+      <main>
+        <section class="status-strip" id="status-strip">
+          <div class="status-copy">
+            <span class="eyebrow">Ready</span>
+            <strong>Enter a handle to build a coach profile.</strong>
+          </div>
+          <button class="ghost-button" id="refresh-button" type="button" disabled title="Refresh live Codeforces data">
+            <i data-lucide="refresh-cw"></i>
+            <span>Refresh</span>
+          </button>
+        </section>
+
+        <section class="metrics-grid" id="metrics-grid"></section>
+
+        <section class="main-grid">
+          <div class="panel chart-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Weakness Model</span>
+                <h2>Topic pressure</h2>
+              </div>
+            </div>
+            <div class="chart-box">
+              <canvas id="weakness-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="panel chart-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Trajectory</span>
+                <h2>Rating history</h2>
+              </div>
+            </div>
+            <div class="chart-box">
+              <canvas id="rating-chart"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="main-grid">
+          <div class="panel chart-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Submissions</span>
+                <h2>Practice cadence</h2>
+              </div>
+            </div>
+            <div class="chart-box">
+              <canvas id="timeline-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="panel chart-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">Languages</span>
+                <h2>Accepted mix</h2>
+              </div>
+            </div>
+            <div class="chart-box">
+              <canvas id="language-chart"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-header">
+          <div>
+              <span class="eyebrow">Stage 1 + Stage 2</span>
+              <h2>Next problems</h2>
+          </div>
+          <div class="filter-pills" id="priority-filters"></div>
+        </section>
+        <section class="recommendation-grid" id="recommendation-grid"></section>
+
+        <section class="section-header">
+          <div>
+            <span class="eyebrow">Training Plan</span>
+            <h2>Weekly ladder</h2>
+          </div>
+        </section>
+        <section class="plan-grid" id="plan-grid"></section>
+
+        <section class="topic-table-wrap">
+          <div class="section-header compact">
+            <div>
+              <span class="eyebrow">Diagnostics</span>
+              <h2>Tag profile</h2>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tag</th>
+                  <th>Level</th>
+                  <th>Attempted</th>
+                  <th>Solved</th>
+                  <th>Accuracy</th>
+                  <th>Avg rating</th>
+                  <th>Weakness</th>
+                </tr>
+              </thead>
+              <tbody id="topic-table"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
