@@ -2,6 +2,8 @@
 
 Codeforces Virtual Coach is a staged recommender-system project for competitive programmers. A user enters a Codeforces handle, the app analyzes their submission history, detects weak topics, and recommends unsolved problems that match their current growth needs.
 
+Live app: [codeforces-virtual-coach.onrender.com](https://codeforces-virtual-coach.onrender.com)
+
 ## What It Does
 
 - Fetches live Codeforces profile, submission, rating, and problemset data.
