@@ -7,6 +7,7 @@ from typing import Any
 from .analytics import build_user_profile, normalize_rating_history, normalize_user
 from .cf_client import CodeforcesAPIError, CodeforcesClient
 from .config import get_settings
+from .evaluator import evaluate_recommender
 from .planner import build_training_plan
 from .recommender import build_problem_catalog, recommend_problems_with_metadata
 
@@ -39,6 +40,7 @@ async def analyze_handle(handle: str, limit: int | None = None, force_refresh: b
         catalog,
         top_n=settings.default_recommendations,
     )
+    evaluation = evaluate_recommender(user, submissions, rating_history, catalog, k=10)
     plan = build_training_plan(profile, recommendations)
 
     return {
@@ -51,6 +53,7 @@ async def analyze_handle(handle: str, limit: int | None = None, force_refresh: b
         "timeline": profile["timeline"],
         "rating_history": normalize_rating_history(rating_history),
         "recommender_model": recommender_model,
+        "evaluation": evaluation,
         "recommendations": recommendations,
         "plan": plan,
         "cache": {

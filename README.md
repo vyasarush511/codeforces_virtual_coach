@@ -10,6 +10,7 @@ Live app: [vyasarush511.github.io/codeforces_virtual_coach](https://vyasarush511
 - Computes tag-wise accuracy, solved count, average solved rating, wrong-attempt pressure, activity cadence, strong topics, and weak topics.
 - Recommends unsolved problems in the user's rating-growth band.
 - Uses a Stage 2 content-based recommender with problem vectors, a user weakness vector, cosine similarity, and KNN.
+- Reports offline backtesting metrics: `Precision@10`, `HitRate@10`, `NDCG@10`, and `MRR`.
 - Produces a weekly training ladder with Core, Repair, Stretch, and Explore problems.
 
 ## Implemented Stages
@@ -84,6 +85,22 @@ final_score =
 ```
 
 The final list is reranked with a diversity pass so the user does not get many near-identical problems from the same tag and rating band.
+
+## Evaluation Metrics
+
+The app evaluates the recommender with a temporal holdout backtest:
+
+1. Sort the user's accepted problems by first solve time.
+2. Train the recommender on the older 80% of solved history.
+3. Recommend top 10 problems.
+4. Check whether the newer 20% of solved problems appear in that recommendation list.
+
+Reported metrics:
+
+- `Precision@10`: fraction of top 10 recommendations that appeared in the held-out future solves.
+- `HitRate@10`: whether at least one top 10 recommendation appeared in the held-out future solves.
+- `NDCG@10`: ranking quality, rewarding useful problems placed near the top.
+- `MRR`: reciprocal rank of the first useful recommendation.
 
 ## Future Stages
 

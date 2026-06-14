@@ -3,6 +3,7 @@ const input = document.querySelector("#handle-input");
 const refreshButton = document.querySelector("#refresh-button");
 const statusStrip = document.querySelector("#status-strip");
 const metricsGrid = document.querySelector("#metrics-grid");
+const evaluationGrid = document.querySelector("#evaluation-grid");
 const recommendationGrid = document.querySelector("#recommendation-grid");
 const planGrid = document.querySelector("#plan-grid");
 const topicTable = document.querySelector("#topic-table");
@@ -81,6 +82,7 @@ function renderDashboard(data) {
     `${data.user.handle} - ${formatRank(data.user.rank)} - ${data.cache.submissions_loaded.toLocaleString()} submissions loaded`;
 
   renderMetrics(data);
+  renderEvaluation(data.evaluation);
   renderCharts(data);
   renderFilters(data.recommendations);
   renderRecommendations(data.recommendations);
@@ -102,6 +104,36 @@ function renderMetrics(data) {
   ];
 
   metricsGrid.innerHTML = metrics
+    .map(
+      ([label, value, hint]) => `
+        <article class="metric-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(String(value))}</strong>
+          <small>${escapeHtml(String(hint))}</small>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderEvaluation(evaluation) {
+  if (!evaluation || evaluation.status !== "ok") {
+    evaluationGrid.innerHTML = `
+      <div class="empty-state">
+        ${escapeHtml(evaluation?.message || "Not enough solved history to run temporal backtesting.")}
+      </div>
+    `;
+    return;
+  }
+  const metrics = [
+    [`Precision@${evaluation.k}`, percent(evaluation.precision_at_k), `${evaluation.hits.length}/${evaluation.k} held-out hits`],
+    [`HitRate@${evaluation.k}`, percent(evaluation.hit_rate_at_k), "at least one future solve"],
+    [`NDCG@${evaluation.k}`, percent(evaluation.ndcg_at_k), "ranking quality"],
+    ["MRR", decimal(evaluation.mrr), "first useful rank"],
+    ["Train solves", evaluation.train_solved, `before ${evaluation.cutoff_date}`],
+    ["Holdout solves", evaluation.holdout_solved, "future solved set"],
+  ];
+  evaluationGrid.innerHTML = metrics
     .map(
       ([label, value, hint]) => `
         <article class="metric-card">
@@ -340,6 +372,7 @@ function renderEmptyState() {
   metricsGrid.innerHTML = `
     <div class="empty-state">Try your handle or a public handle such as tourist, Benq, or Petr.</div>
   `;
+  evaluationGrid.innerHTML = "";
   recommendationGrid.innerHTML = "";
   planGrid.innerHTML = "";
   topicTable.innerHTML = "";
@@ -381,4 +414,12 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function percent(value) {
+  return value === null || value === undefined ? "-" : `${Math.round(value * 100)}%`;
+}
+
+function decimal(value) {
+  return value === null || value === undefined ? "-" : Number(value).toFixed(3);
 }

@@ -99,6 +99,20 @@ class ProfileSummary(BaseModel):
     weak_tags: list[str]
 
 
+class EvaluationMetrics(BaseModel):
+    status: str
+    k: int
+    message: str | None = None
+    cutoff_date: str | None = None
+    train_solved: int
+    holdout_solved: int
+    precision_at_k: float | None = None
+    hit_rate_at_k: float | None = None
+    ndcg_at_k: float | None = None
+    mrr: float | None = None
+    hits: list[str]
+
+
 class AnalysisResponse(BaseModel):
     generated_at: str
     source: str
@@ -109,6 +123,7 @@ class AnalysisResponse(BaseModel):
     timeline: list[TimelinePoint]
     rating_history: list[RatingPoint]
     recommender_model: dict[str, Any]
+    evaluation: EvaluationMetrics
     recommendations: list[Recommendation]
     plan: TrainingPlan
     cache: dict[str, Any]
