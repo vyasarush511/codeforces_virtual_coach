@@ -5,6 +5,7 @@ const refreshButton = document.querySelector("#refresh-button");
 const statusStrip = document.querySelector("#status-strip");
 const metricsGrid = document.querySelector("#metrics-grid");
 const evaluationGrid = document.querySelector("#evaluation-grid");
+const growthGrid = document.querySelector("#growth-grid");
 const recommendationGrid = document.querySelector("#recommendation-grid");
 const planGrid = document.querySelector("#plan-grid");
 const topicTable = document.querySelector("#topic-table");
@@ -62,6 +63,7 @@ async function analyze(handle) {
     const catalog = buildProblemCatalog(problemset);
     const { recommendations, model } = recommendProblems(profile, catalog, 24);
     const evaluation = evaluateRecommender(user, submissions, ratingHistory, catalog, 10);
+    const growthBacktest = evaluateGrowthBacktest(user, submissions, ratingHistory, catalog);
     currentData = {
       source: "Codeforces API",
       user: normalizeUser(user),
@@ -72,6 +74,7 @@ async function analyze(handle) {
       rating_history: normalizeRatingHistory(ratingHistory),
       recommender_model: model,
       evaluation,
+      growth_backtest: growthBacktest,
       recommendations,
       plan: buildTrainingPlan(profile, recommendations),
       cache: { submissions_loaded: submissions.length, problem_catalog_size: catalog.length },
@@ -365,6 +368,139 @@ function evaluateRecommender(user, submissions, ratingHistory, catalog, k) {
   };
 }
 
+function evaluateGrowthBacktest(user, submissions, ratingHistory, catalog, windowDays = 60, maxCheckpoints = 6) {
+  if (ratingHistory.length < 4) {
+    return insufficientGrowth("insufficient_rating_history", "Need at least 4 rated contests for growth backtesting.", windowDays);
+  }
+  const windows = [];
+  for (const event of sampleCheckpoints(ratingHistory, maxCheckpoints)) {
+    const cutoff = event.ratingUpdateTimeSeconds || 0;
+    const endTime = cutoff + windowDays * 86400;
+    const futureRatingEvents = ratingHistory.filter((item) => cutoff < (item.ratingUpdateTimeSeconds || 0) && (item.ratingUpdateTimeSeconds || 0) <= endTime);
+    if (!futureRatingEvents.length) continue;
+
+    const trainingSubmissions = submissions.filter((submission) => (submission.creationTimeSeconds || 0) <= cutoff);
+    const futureSolves = uniqueAcceptedBetween(submissions, cutoff, endTime);
+    if (futureSolves.length < 3) continue;
+
+    const trainingRating = ratingHistory.filter((item) => (item.ratingUpdateTimeSeconds || 0) <= cutoff);
+    const trainingProfile = buildUserProfile(user, trainingSubmissions, trainingRating);
+    if (trainingProfile.summary.solved_count < 20) continue;
+
+    const { recommendations } = recommendProblems(trainingProfile, catalog, 20);
+    const focusTags = trainingProfile.summary.weak_tags.slice(0, 4);
+    const activeFocusTags = focusTags.length ? focusTags : topRecommendationTags(recommendations);
+    if (!activeFocusTags.length) continue;
+
+    const recRatings = recommendations.map((item) => item.rating).filter(Boolean);
+    const lowRating = recRatings.length ? Math.min(...recRatings) - 100 : Math.max(800, event.newRating - 250);
+    const highRating = recRatings.length ? Math.max(...recRatings) + 100 : event.newRating + 500;
+    const alignedSolves = futureSolves.filter((submission) => matchesFocus(submission, activeFocusTags, lowRating, highRating));
+    const adherence = alignedSolves.length / futureSolves.length;
+    const beforeSkill = avgSolvedRatingForTags(trainingSubmissions, activeFocusTags);
+    const afterSkill = avgSolvedRatingForTags(futureSolves, activeFocusTags);
+    const skillGain = beforeSkill !== null && afterSkill !== null ? afterSkill - beforeSkill : null;
+
+    windows.push({
+      cutoff_date: utcDate(cutoff),
+      rating_delta: futureRatingEvents.at(-1).newRating - event.newRating,
+      future_solves: futureSolves.length,
+      aligned_solves: alignedSolves.length,
+      focus_adherence: adherence,
+      followed: adherence >= 0.25,
+      weak_tag_skill_gain: skillGain,
+      focus_tags: activeFocusTags,
+    });
+  }
+
+  if (!windows.length) {
+    return insufficientGrowth("insufficient_windows", "Not enough future solve/rating windows to estimate growth.", windowDays);
+  }
+
+  const followed = windows.filter((window) => window.followed);
+  const baseline = windows.filter((window) => !window.followed);
+  const followedDelta = meanOrNull(followed.map((window) => window.rating_delta));
+  const baselineDelta = meanOrNull(baseline.map((window) => window.rating_delta));
+  const uplift = followedDelta !== null && baselineDelta !== null ? followedDelta - baselineDelta : null;
+
+  return {
+    status: "ok",
+    window_days: windowDays,
+    windows_evaluated: windows.length,
+    followed_windows: followed.length,
+    baseline_windows: baseline.length,
+    avg_rating_delta_followed: roundOrNull(followedDelta, 1),
+    avg_rating_delta_baseline: roundOrNull(baselineDelta, 1),
+    estimated_rating_uplift: roundOrNull(uplift, 1),
+    avg_focus_adherence: roundOrNull(meanOrNull(windows.map((window) => window.focus_adherence)), 4),
+    avg_weak_tag_skill_gain: roundOrNull(meanOrNull(windows.map((window) => window.weak_tag_skill_gain).filter((value) => value !== null)), 1),
+    windows,
+    note: "Growth backtest is correlational, not causal; it estimates whether recommendation-aligned practice historically coincided with stronger outcomes.",
+  };
+}
+
+function insufficientGrowth(status, message, windowDays) {
+  return {
+    status,
+    message,
+    window_days: windowDays,
+    windows_evaluated: 0,
+    followed_windows: 0,
+    baseline_windows: 0,
+    avg_rating_delta_followed: null,
+    avg_rating_delta_baseline: null,
+    estimated_rating_uplift: null,
+    avg_focus_adherence: null,
+    avg_weak_tag_skill_gain: null,
+  };
+}
+
+function sampleCheckpoints(ratingHistory, maxCheckpoints) {
+  const eligible = ratingHistory.slice(1, -1);
+  if (eligible.length <= maxCheckpoints) return eligible;
+  const step = Math.max(1, Math.floor(eligible.length / maxCheckpoints));
+  return eligible.filter((_, index) => index % step === 0).slice(0, maxCheckpoints);
+}
+
+function uniqueAcceptedBetween(submissions, startTime, endTime) {
+  const firstByKey = new Map();
+  for (const submission of submissions) {
+    if (submission.verdict !== "OK") continue;
+    const createdAt = submission.creationTimeSeconds || 0;
+    if (!(startTime < createdAt && createdAt <= endTime)) continue;
+    const key = problemKey(submission.problem || {});
+    if (!key) continue;
+    const current = firstByKey.get(key);
+    if (!current || createdAt < (current.creationTimeSeconds || 0)) firstByKey.set(key, submission);
+  }
+  return Array.from(firstByKey.values());
+}
+
+function matchesFocus(submission, focusTags, lowRating, highRating) {
+  const problem = submission.problem || {};
+  const rating = problem.rating;
+  if (!rating || rating < lowRating || rating > highRating) return false;
+  return problem.tags?.some((tag) => focusTags.includes(tag)) || false;
+}
+
+function avgSolvedRatingForTags(submissions, tags) {
+  const tagSet = new Set(tags);
+  const ratings = submissions
+    .filter((submission) => submission.verdict === "OK" && submission.problem?.rating && submission.problem?.tags?.some((tag) => tagSet.has(tag)))
+    .map((submission) => Number(submission.problem.rating));
+  return ratings.length ? avg(ratings) : null;
+}
+
+function topRecommendationTags(recommendations) {
+  const counts = {};
+  recommendations.slice(0, 10).forEach((recommendation) => {
+    recommendation.tags.forEach((tag) => {
+      counts[tag] = (counts[tag] || 0) + 1;
+    });
+  });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([tag]) => tag);
+}
+
 function firstSolveEvents(submissions) {
   const firstByKey = new Map();
   for (const submission of submissions) {
@@ -484,6 +620,7 @@ function renderDashboard(data) {
     `${data.user.handle} - ${formatRank(data.user.rank)} - ${data.cache.submissions_loaded.toLocaleString()} submissions loaded`;
   renderMetrics(data);
   renderEvaluation(data.evaluation);
+  renderGrowthBacktest(data.growth_backtest);
   renderCharts(data);
   renderFilters(data.recommendations);
   renderRecommendations(data.recommendations);
@@ -526,6 +663,24 @@ function renderEvaluation(evaluation) {
     ["Holdout solves", evaluation.holdout_solved, "future solved set"],
   ];
   evaluationGrid.innerHTML = metrics
+    .map(([label, value, hint]) => `<article class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(hint)}</small></article>`)
+    .join("");
+}
+
+function renderGrowthBacktest(growth) {
+  if (!growth || growth.status !== "ok") {
+    growthGrid.innerHTML = `<div class="empty-state">${escapeHtml(growth?.message || "Not enough rating history to estimate growth outcomes.")}</div>`;
+    return;
+  }
+  const metrics = [
+    ["Windows", growth.windows_evaluated, `${growth.window_days}-day lookahead`],
+    ["Followed", growth.followed_windows, "high-adherence windows"],
+    ["Delta if followed", signedNumber(growth.avg_rating_delta_followed), "avg rating change"],
+    ["Delta baseline", signedNumber(growth.avg_rating_delta_baseline), "low-adherence windows"],
+    ["Est. uplift", signedNumber(growth.estimated_rating_uplift), "followed minus baseline"],
+    ["Skill gain", signedNumber(growth.avg_weak_tag_skill_gain), "weak-tag avg rating"],
+  ];
+  growthGrid.innerHTML = metrics
     .map(([label, value, hint]) => `<article class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(hint)}</small></article>`)
     .join("");
 }
@@ -621,6 +776,7 @@ function setLoading(handle) {
 function renderEmptyState() {
   metricsGrid.innerHTML = `<div class="empty-state">Try your handle or a public handle such as tourist, Benq, or Petr.</div>`;
   evaluationGrid.innerHTML = "";
+  growthGrid.innerHTML = "";
 }
 
 function renderError(error) {
@@ -838,4 +994,17 @@ function percent(value) {
 
 function decimal(value) {
   return value === null || value === undefined ? "-" : Number(value).toFixed(3);
+}
+
+function signedNumber(value) {
+  if (value === null || value === undefined) return "-";
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function meanOrNull(values) {
+  return values.length ? avg(values) : null;
+}
+
+function roundOrNull(value, decimals) {
+  return value === null || value === undefined ? null : round(value, decimals);
 }
