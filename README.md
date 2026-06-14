@@ -102,6 +102,16 @@ Reported metrics:
 - `NDCG@10`: ranking quality, rewarding useful problems placed near the top.
 - `MRR`: reciprocal rank of the first useful recommendation.
 
+The app also reports a growth-oriented proxy metric:
+
+1. Pick several past rated-contest checkpoints.
+2. Generate the recommendation strategy that would have been shown at that time.
+3. Look ahead 60 days.
+4. Mark windows as high-adherence when the user later solved similar tag/rating-band problems.
+5. Compare rating change and weak-tag solved-rating gain in high-adherence windows versus baseline windows.
+
+This does not prove causality like an A/B test would, but it is closer to the real goal: whether recommendation-aligned practice historically coincided with stronger rating or skill outcomes.
+
 ## Future Stages
 
 ### Stage 3: Collaborative Filtering

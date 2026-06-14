@@ -113,6 +113,22 @@ class EvaluationMetrics(BaseModel):
     hits: list[str]
 
 
+class GrowthBacktest(BaseModel):
+    status: str
+    message: str | None = None
+    window_days: int
+    windows_evaluated: int
+    followed_windows: int
+    baseline_windows: int
+    avg_rating_delta_followed: float | None = None
+    avg_rating_delta_baseline: float | None = None
+    estimated_rating_uplift: float | None = None
+    avg_focus_adherence: float | None = None
+    avg_weak_tag_skill_gain: float | None = None
+    note: str | None = None
+    windows: list[dict[str, Any]] = []
+
+
 class AnalysisResponse(BaseModel):
     generated_at: str
     source: str
@@ -124,6 +140,7 @@ class AnalysisResponse(BaseModel):
     rating_history: list[RatingPoint]
     recommender_model: dict[str, Any]
     evaluation: EvaluationMetrics
+    growth_backtest: GrowthBacktest
     recommendations: list[Recommendation]
     plan: TrainingPlan
     cache: dict[str, Any]

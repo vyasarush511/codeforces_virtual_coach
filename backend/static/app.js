@@ -4,6 +4,7 @@ const refreshButton = document.querySelector("#refresh-button");
 const statusStrip = document.querySelector("#status-strip");
 const metricsGrid = document.querySelector("#metrics-grid");
 const evaluationGrid = document.querySelector("#evaluation-grid");
+const growthGrid = document.querySelector("#growth-grid");
 const recommendationGrid = document.querySelector("#recommendation-grid");
 const planGrid = document.querySelector("#plan-grid");
 const topicTable = document.querySelector("#topic-table");
@@ -83,6 +84,7 @@ function renderDashboard(data) {
 
   renderMetrics(data);
   renderEvaluation(data.evaluation);
+  renderGrowthBacktest(data.growth_backtest);
   renderCharts(data);
   renderFilters(data.recommendations);
   renderRecommendations(data.recommendations);
@@ -134,6 +136,36 @@ function renderEvaluation(evaluation) {
     ["Holdout solves", evaluation.holdout_solved, "future solved set"],
   ];
   evaluationGrid.innerHTML = metrics
+    .map(
+      ([label, value, hint]) => `
+        <article class="metric-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(String(value))}</strong>
+          <small>${escapeHtml(String(hint))}</small>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderGrowthBacktest(growth) {
+  if (!growth || growth.status !== "ok") {
+    growthGrid.innerHTML = `
+      <div class="empty-state">
+        ${escapeHtml(growth?.message || "Not enough rating history to estimate growth outcomes.")}
+      </div>
+    `;
+    return;
+  }
+  const metrics = [
+    ["Windows", growth.windows_evaluated, `${growth.window_days}-day lookahead`],
+    ["Followed", growth.followed_windows, "high-adherence windows"],
+    ["Delta if followed", signedNumber(growth.avg_rating_delta_followed), "avg rating change"],
+    ["Delta baseline", signedNumber(growth.avg_rating_delta_baseline), "low-adherence windows"],
+    ["Est. uplift", signedNumber(growth.estimated_rating_uplift), "followed minus baseline"],
+    ["Skill gain", signedNumber(growth.avg_weak_tag_skill_gain), "weak-tag avg rating"],
+  ];
+  growthGrid.innerHTML = metrics
     .map(
       ([label, value, hint]) => `
         <article class="metric-card">
@@ -373,6 +405,7 @@ function renderEmptyState() {
     <div class="empty-state">Try your handle or a public handle such as tourist, Benq, or Petr.</div>
   `;
   evaluationGrid.innerHTML = "";
+  growthGrid.innerHTML = "";
   recommendationGrid.innerHTML = "";
   planGrid.innerHTML = "";
   topicTable.innerHTML = "";
@@ -422,4 +455,9 @@ function percent(value) {
 
 function decimal(value) {
   return value === null || value === undefined ? "-" : Number(value).toFixed(3);
+}
+
+function signedNumber(value) {
+  if (value === null || value === undefined) return "-";
+  return value > 0 ? `+${value}` : String(value);
 }
