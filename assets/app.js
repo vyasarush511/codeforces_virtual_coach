@@ -4,6 +4,7 @@ const input = document.querySelector("#handle-input");
 const refreshButton = document.querySelector("#refresh-button");
 const statusStrip = document.querySelector("#status-strip");
 const metricsGrid = document.querySelector("#metrics-grid");
+const evaluationGrid = document.querySelector("#evaluation-grid");
 const recommendationGrid = document.querySelector("#recommendation-grid");
 const planGrid = document.querySelector("#plan-grid");
 const topicTable = document.querySelector("#topic-table");
@@ -60,6 +61,7 @@ async function analyze(handle) {
     const profile = buildUserProfile(user, submissions, ratingHistory);
     const catalog = buildProblemCatalog(problemset);
     const { recommendations, model } = recommendProblems(profile, catalog, 24);
+    const evaluation = evaluateRecommender(user, submissions, ratingHistory, catalog, 10);
     currentData = {
       source: "Codeforces API",
       user: normalizeUser(user),
@@ -69,6 +71,7 @@ async function analyze(handle) {
       timeline: profile.timeline,
       rating_history: normalizeRatingHistory(ratingHistory),
       recommender_model: model,
+      evaluation,
       recommendations,
       plan: buildTrainingPlan(profile, recommendations),
       cache: { submissions_loaded: submissions.length, problem_catalog_size: catalog.length },
@@ -320,6 +323,81 @@ function recommendProblems(profile, catalog, topN) {
   };
 }
 
+function evaluateRecommender(user, submissions, ratingHistory, catalog, k) {
+  const solvedEvents = firstSolveEvents(submissions);
+  if (solvedEvents.length < 20) {
+    return {
+      status: "insufficient_history",
+      k,
+      message: "Need at least 20 solved problems for temporal backtesting.",
+      train_solved: solvedEvents.length,
+      holdout_solved: 0,
+      precision_at_k: null,
+      hit_rate_at_k: null,
+      ndcg_at_k: null,
+      mrr: null,
+      hits: [],
+    };
+  }
+
+  let splitIndex = Math.floor(solvedEvents.length * 0.8);
+  splitIndex = Math.max(1, Math.min(splitIndex, solvedEvents.length - 1));
+  const cutoff = solvedEvents[splitIndex - 1].acceptedAt;
+  const holdoutKeys = new Set(solvedEvents.slice(splitIndex).map((event) => event.key));
+  const trainingSubmissions = submissions.filter((submission) => (submission.creationTimeSeconds || 0) <= cutoff);
+  const trainingRating = ratingHistory.filter((item) => (item.ratingUpdateTimeSeconds || 0) <= cutoff);
+  const trainingProfile = buildUserProfile(user, trainingSubmissions, trainingRating);
+  const { recommendations } = recommendProblems(trainingProfile, catalog, k);
+  const recommendedKeys = recommendations.slice(0, k).map((item) => `${item.contest_id}${item.index}`);
+  const hits = recommendedKeys.filter((key) => holdoutKeys.has(key));
+
+  return {
+    status: "ok",
+    k,
+    cutoff_date: utcDate(cutoff),
+    train_solved: splitIndex,
+    holdout_solved: holdoutKeys.size,
+    precision_at_k: round(hits.length / k, 4),
+    hit_rate_at_k: hits.length ? 1 : 0,
+    ndcg_at_k: round(ndcg(recommendedKeys, holdoutKeys, k), 4),
+    mrr: round(mrr(recommendedKeys, holdoutKeys), 4),
+    hits,
+  };
+}
+
+function firstSolveEvents(submissions) {
+  const firstByKey = new Map();
+  for (const submission of submissions) {
+    if (submission.verdict !== "OK") continue;
+    const key = problemKey(submission.problem || {});
+    if (!key) continue;
+    const acceptedAt = submission.creationTimeSeconds || 0;
+    const current = firstByKey.get(key);
+    if (!current || acceptedAt < current.acceptedAt) {
+      firstByKey.set(key, { key, acceptedAt });
+    }
+  }
+  return Array.from(firstByKey.values()).sort((a, b) => a.acceptedAt - b.acceptedAt);
+}
+
+function ndcg(recommendedKeys, relevantKeys, k) {
+  let dcg = 0;
+  recommendedKeys.slice(0, k).forEach((key, index) => {
+    if (relevantKeys.has(key)) dcg += 1 / Math.log2(index + 2);
+  });
+  const idealHits = Math.min(k, relevantKeys.size);
+  let idcg = 0;
+  for (let index = 1; index <= idealHits; index++) {
+    idcg += 1 / Math.log2(index + 1);
+  }
+  return idcg ? dcg / idcg : 0;
+}
+
+function mrr(recommendedKeys, relevantKeys) {
+  const index = recommendedKeys.findIndex((key) => relevantKeys.has(key));
+  return index >= 0 ? 1 / (index + 1) : 0;
+}
+
 function contentSimilarityScores(profile, catalog) {
   const userVector = userNeedVector(profile);
   const raw = catalog.map((problem) => [problem.key, cosine(problemVector(problem), userVector)]);
@@ -405,6 +483,7 @@ function renderDashboard(data) {
   statusStrip.querySelector("strong").textContent =
     `${data.user.handle} - ${formatRank(data.user.rank)} - ${data.cache.submissions_loaded.toLocaleString()} submissions loaded`;
   renderMetrics(data);
+  renderEvaluation(data.evaluation);
   renderCharts(data);
   renderFilters(data.recommendations);
   renderRecommendations(data.recommendations);
@@ -425,6 +504,28 @@ function renderMetrics(data) {
     ["Streak", profile.max_streak_days, `${profile.active_days} active days`],
   ];
   metricsGrid.innerHTML = metrics
+    .map(([label, value, hint]) => `<article class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(hint)}</small></article>`)
+    .join("");
+}
+
+function renderEvaluation(evaluation) {
+  if (!evaluation || evaluation.status !== "ok") {
+    evaluationGrid.innerHTML = `
+      <div class="empty-state">
+        ${escapeHtml(evaluation?.message || "Not enough solved history to run temporal backtesting.")}
+      </div>
+    `;
+    return;
+  }
+  const metrics = [
+    [`Precision@${evaluation.k}`, percent(evaluation.precision_at_k), `${evaluation.hits.length}/${evaluation.k} held-out hits`],
+    [`HitRate@${evaluation.k}`, percent(evaluation.hit_rate_at_k), "at least one future solve"],
+    [`NDCG@${evaluation.k}`, percent(evaluation.ndcg_at_k), "ranking quality"],
+    ["MRR", decimal(evaluation.mrr), "first useful rank"],
+    ["Train solves", evaluation.train_solved, `before ${evaluation.cutoff_date}`],
+    ["Holdout solves", evaluation.holdout_solved, "future solved set"],
+  ];
+  evaluationGrid.innerHTML = metrics
     .map(([label, value, hint]) => `<article class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(hint)}</small></article>`)
     .join("");
 }
@@ -519,6 +620,7 @@ function setLoading(handle) {
 
 function renderEmptyState() {
   metricsGrid.innerHTML = `<div class="empty-state">Try your handle or a public handle such as tourist, Benq, or Petr.</div>`;
+  evaluationGrid.innerHTML = "";
 }
 
 function renderError(error) {
@@ -730,3 +832,10 @@ function escapeHtml(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
 
+function percent(value) {
+  return value === null || value === undefined ? "-" : `${Math.round(value * 100)}%`;
+}
+
+function decimal(value) {
+  return value === null || value === undefined ? "-" : Number(value).toFixed(3);
+}

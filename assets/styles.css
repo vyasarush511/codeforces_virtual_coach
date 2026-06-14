@@ -185,6 +185,15 @@ button:disabled {
   margin-top: 18px;
 }
 
+.evaluation-heading {
+  margin-top: 18px;
+  margin-bottom: 10px;
+}
+
+.evaluation-grid {
+  margin-top: 0;
+}
+
 .metric-card,
 .panel,
 .problem-card,
