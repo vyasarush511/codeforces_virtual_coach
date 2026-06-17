@@ -18,7 +18,8 @@ def build_problem_catalog(problemset_payload: dict[str, Any]) -> list[dict[str, 
     for problem in problemset_payload.get("problems", []):
         key = problem_key(problem)
         rating = problem.get("rating")
-        if not key or rating is None:
+        name = problem.get("name", "Unknown problem")
+        if not key or rating is None or _has_cyrillic(name):
             continue
         contest_id = problem.get("contestId")
         index = problem.get("index")
@@ -27,7 +28,7 @@ def build_problem_catalog(problemset_payload: dict[str, Any]) -> list[dict[str, 
                 "key": key,
                 "contest_id": int(contest_id),
                 "index": str(index),
-                "name": problem.get("name", "Unknown problem"),
+                "name": name,
                 "rating": int(rating),
                 "tags": list(problem.get("tags", [])),
                 "solved_count": stats_by_key.get(key, 0),
@@ -35,6 +36,10 @@ def build_problem_catalog(problemset_payload: dict[str, Any]) -> list[dict[str, 
             }
         )
     return catalog
+
+
+def _has_cyrillic(text: str) -> bool:
+    return any("\u0400" <= char <= "\u04ff" for char in text)
 
 
 def recommend_problems(profile: dict[str, Any], catalog: list[dict[str, Any]], top_n: int = 24) -> list[dict[str, Any]]:

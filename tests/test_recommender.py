@@ -1,5 +1,5 @@
 from backend.analytics import build_user_profile
-from backend.recommender import recommend_problems
+from backend.recommender import build_problem_catalog, recommend_problems
 
 from tests.test_analytics import submission
 
@@ -52,3 +52,20 @@ def test_recommender_filters_solved_and_prioritizes_weak_tags():
     assert recommendations[0]["priority"] in {"Core", "Repair", "Stretch"}
     assert "content_similarity" in recommendations[0]["features"]
     assert "rule_score" in recommendations[0]["features"]
+
+
+def test_problem_catalog_filters_cyrillic_problem_titles():
+    payload = {
+        "problems": [
+            {"contestId": 1, "index": "A", "name": "English Title", "rating": 1200, "tags": ["dp"]},
+            {"contestId": 2, "index": "B", "name": "Русское название", "rating": 1200, "tags": ["math"]},
+        ],
+        "problemStatistics": [
+            {"contestId": 1, "index": "A", "solvedCount": 10},
+            {"contestId": 2, "index": "B", "solvedCount": 20},
+        ],
+    }
+
+    catalog = build_problem_catalog(payload)
+
+    assert [problem["name"] for problem in catalog] == ["English Title"]
