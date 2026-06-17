@@ -267,7 +267,7 @@ function buildProblemCatalog(problemset) {
     stats.set(key, item.solvedCount || 0);
   }
   return (problemset.problems || [])
-    .filter((problem) => problem.contestId && problem.index && problem.rating)
+    .filter((problem) => problem.contestId && problem.index && problem.rating && !hasCyrillic(problem.name || ""))
     .map((problem) => {
       const key = `${problem.contestId}${problem.index}`;
       return {
@@ -281,6 +281,10 @@ function buildProblemCatalog(problemset) {
         url: `https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`,
       };
     });
+}
+
+function hasCyrillic(text) {
+  return /[\u0400-\u04FF]/.test(text);
 }
 
 function recommendProblems(profile, catalog, topN) {
